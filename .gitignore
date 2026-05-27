@@ -7,12 +7,14 @@ debug/
 
 # Generated artifacts
 gpu-scheduler-demo.html
+gpu-scheduler-guide.html
 demo-*.gif
 demo-gifs.html
 talk-html-landing.html
 
 # Build / test artifacts
 build_demo.py
+build_guide.py
 make_demo_gifs.py
 _check_imports.py
 _fix_unicode.py
