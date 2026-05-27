@@ -257,18 +257,25 @@ async def scheduler_loop(config: Config, once: bool = False) -> None:
     console.print("[bold green]GPU Scheduler daemon 启动[/bold green]")
     console.print(f"  轮询间隔: {config.scheduler.poll_interval}s")
     console.print(f"  服务器数: {len(config.servers)}")
+    console.print(f"  SSH 模式: 连接池（复用长连接，避免频繁握手）")
 
-    while True:
-        task = get_next_pending(config)
-        if task is not None:
-            console.print(f"[cyan]调度任务 #{task.id}: {task.command[:60]}...[/cyan]")
-            await _run_task(config, task)
-            if task.status == TaskStatus.COMPLETED:
-                console.print(f"  [green][OK] 完成 (exit={task.exit_code})[/green]")
-            elif task.status == TaskStatus.FAILED:
-                console.print(f"  [red][FAIL] 失败 (exit={task.exit_code})[/red]")
+    try:
+        while True:
+            task = get_next_pending(config)
+            if task is not None:
+                console.print(f"[cyan]调度任务 #{task.id}: {task.command[:60]}...[/cyan]")
+                await _run_task(config, task)
+                if task.status == TaskStatus.COMPLETED:
+                    console.print(f"  [green][OK] 完成 (exit={task.exit_code})[/green]")
+                elif task.status == TaskStatus.FAILED:
+                    console.print(f"  [red][FAIL] 失败 (exit={task.exit_code})[/red]")
 
-        if once:
-            break
+            if once:
+                break
 
-        await asyncio.sleep(config.scheduler.poll_interval)
+            await asyncio.sleep(config.scheduler.poll_interval)
+
+    finally:
+        from gpu_scheduler.executor.ssh_pool import close_pool
+        await close_pool()
+        console.print("[dim]SSH 连接池已关闭[/dim]")

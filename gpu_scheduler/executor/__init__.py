@@ -1,20 +1,9 @@
-"""SSH 执行层 — 通过 SSH 在远程 GPU 服务器上执行用户命令."""
+"""SSH 执行层 — 通过 SSH 连接池在远程 GPU 服务器上执行用户命令."""
 
 from __future__ import annotations
 
-import asyncio
-import os
-from pathlib import Path
-
-import asyncssh
-
 from gpu_scheduler.config import ServerConfig
-
-
-def _resolve_key(key_file: str) -> str | None:
-    if not key_file:
-        return None
-    return str(Path(key_file).expanduser())
+from gpu_scheduler.executor.ssh_pool import get_pool
 
 
 async def run_remote(
@@ -22,7 +11,7 @@ async def run_remote(
     command: str,
     gpu_ids: list[int] | None = None,
 ) -> tuple[int, str]:
-    """在远程服务器的指定 GPU 上执行命令.
+    """在远程服务器的指定 GPU 上执行命令 (复用连接池).
 
     Returns:
         (exit_code, combined_output)
@@ -38,40 +27,27 @@ async def run_remote(
     else:
         full_cmd = command
 
-    key_path = _resolve_key(server.key_file) or None
-
     try:
-        async with asyncssh.connect(
-            server.host,
-            port=server.port,
-            username=server.user or None,
-            client_keys=key_path,
-            known_hosts=None,
-        ) as conn:
-            result = await conn.run(full_cmd, check=False)
-            output = result.stdout
-            if result.stderr:
-                output += "\n[stderr]\n" + result.stderr
-            return result.exit_status, output[-5000:]  # 截断过长输出
+        pool = get_pool()
+        conn = await pool.get(server)
+        result = await conn.run(full_cmd, check=False)
+        output = result.stdout
+        if result.stderr:
+            output += "\n[stderr]\n" + result.stderr
+        return result.exit_status, output[-5000:]
 
-    except (OSError, asyncssh.Error) as e:
-        return -1, f"SSH 连接失败: {e}"
+    except Exception as e:
+        return -1, f"SSH 执行失败: {e}"
 
 
 async def check_ssh(server: ServerConfig) -> tuple[bool, str]:
-    """测试 SSH 连接是否正常."""
+    """测试 SSH 连接是否正常 (复用连接池)."""
     try:
-        key_path = _resolve_key(server.key_file) or None
-        async with asyncssh.connect(
-            server.host,
-            port=server.port,
-            username=server.user or None,
-            client_keys=key_path,
-            known_hosts=None,
-        ) as conn:
-            result = await conn.run("nvidia-smi -L", check=False)
-            if result.exit_status == 0:
-                return True, result.stdout.strip()
-            return False, result.stderr.strip()
-    except (OSError, asyncssh.Error) as e:
+        pool = get_pool()
+        conn = await pool.get(server)
+        result = await conn.run("nvidia-smi -L", check=False)
+        if result.exit_status == 0:
+            return True, result.stdout.strip()
+        return False, result.stderr.strip()
+    except Exception as e:
         return False, str(e)

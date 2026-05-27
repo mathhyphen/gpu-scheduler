@@ -10,6 +10,7 @@ from pathlib import Path
 import asyncssh
 
 from gpu_scheduler.config import Config, ServerConfig
+from gpu_scheduler.executor.ssh_pool import get_pool
 from gpu_scheduler.gpu import GPUInfo, ProcessInfo
 
 # ── nvidia-smi 查询模板 ─────────────────────────────
@@ -131,39 +132,33 @@ async def _query_one_server(
 ) -> tuple[str, list[GPUInfo]]:
     """查询单台服务器的 GPU 状态."""
     gpus: list[GPUInfo] = []
-    key_path = _resolve_key(server.key_file) or None
+    pool = get_pool()
 
     try:
-        async with asyncssh.connect(
-            server.host,
-            port=server.port,
-            username=server.user or None,
-            client_keys=key_path,
-            known_hosts=None,
-        ) as conn:
-            # 并行执行 GPU 和进程查询
-            gpu_result = await conn.run(GPU_QUERY_CMD, check=False)
-            proc_result = await conn.run(PROCESS_QUERY_CMD, check=False)
+        conn = await pool.get(server)
+        # 并行执行 GPU 和进程查询
+        gpu_result = await conn.run(GPU_QUERY_CMD, check=False)
+        proc_result = await conn.run(PROCESS_QUERY_CMD, check=False)
 
-            if gpu_result.exit_status != 0:
-                raise RuntimeError(
-                    f"nvidia-smi 失败: {gpu_result.stderr.strip()}"
-                )
+        if gpu_result.exit_status != 0:
+            raise RuntimeError(
+                f"nvidia-smi 失败: {gpu_result.stderr.strip()}"
+            )
 
-            # 解析 GPU 列表
-            gpus = parse_gpu_csv(gpu_result.stdout, server.host)
+        # 解析 GPU 列表
+        gpus = parse_gpu_csv(gpu_result.stdout, server.host)
 
-            # 构建 UUID → index 映射
-            uuid_to_index: dict[str, int] = {}
+        # 构建 UUID → index 映射
+        uuid_to_index: dict[str, int] = {}
+        for g in gpus:
+            if g.uuid:
+                uuid_to_index[g.uuid] = g.index
+
+        # 解析进程列表并分配到正确的 GPU
+        if proc_result.exit_status == 0:
+            processes = parse_compute_apps_csv(proc_result.stdout, uuid_to_index)
             for g in gpus:
-                if g.uuid:
-                    uuid_to_index[g.uuid] = g.index
-
-            # 解析进程列表并分配到正确的 GPU
-            if proc_result.exit_status == 0:
-                processes = parse_compute_apps_csv(proc_result.stdout, uuid_to_index)
-                for g in gpus:
-                    g.processes = processes.get(g.index, [])
+                g.processes = processes.get(g.index, [])
 
     except (OSError, asyncssh.Error) as e:
         gpus.append(
