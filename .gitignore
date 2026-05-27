@@ -1,0 +1,28 @@
+# Private / sensitive
+.gpu-scheduler.toml
+!.pyproject.toml
+debug/
+.vscode/
+.idea/
+
+# Generated artifacts
+gpu-scheduler-demo.html
+demo-*.gif
+demo-gifs.html
+talk-html-landing.html
+
+# Build / test artifacts
+build_demo.py
+make_demo_gifs.py
+_check_imports.py
+_fix_unicode.py
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+
+# DeepSeek TUI
+.deepseek/
