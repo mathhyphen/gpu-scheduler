@@ -68,9 +68,10 @@ def run_command(
     command: list[str] = typer.Argument(..., help="要执行的命令"),
     gpu_count: int = typer.Option(1, "--gpus", "-g", help="需要的 GPU 数量"),
     gpu_memory: int = typer.Option(0, "--gpu-memory", "-m", help="最低显存要求 (MB)"),
+    detach: bool = typer.Option(False, "--detach", "-d", help="后台执行：远程用 nohup 包一层，提交后立刻返回"),
     config_path: Optional[str] = typer.Option(None, "--config", "-c", help="配置文件路径"),
 ):
-    """立即执行：连 SSH → 查 GPU → 找空闲 → 执行命令 → 断开。不走队列，用完即断."""
+    """立即执行：连 SSH → 查 GPU → 找空闲 → 执行命令 → 断开。--detach 用于长时间训练，自动 nohup 后台运行。"""
     from gpu_scheduler.executor import run_immediate
 
     config = load_config(config_path)
@@ -82,7 +83,7 @@ def run_command(
 
     async def _do():
         exit_code, output, host, gpu_ids = await run_immediate(
-            config, cmd, gpu_count=gpu_count, gpu_memory_min=gpu_memory
+            config, cmd, gpu_count=gpu_count, gpu_memory_min=gpu_memory, detach=detach
         )
         if host:
             status = "[green]OK[/green]" if exit_code == 0 else "[red]FAIL[/red]"

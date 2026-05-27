@@ -12,17 +12,28 @@ async def run_remote(
     server: ServerConfig,
     command: str,
     gpu_ids: list[int] | None = None,
+    detach: bool = False,
 ) -> tuple[int, str]:
     """在远程服务器的指定 GPU 上执行命令.
 
-    Returns:
-        (exit_code, combined_output)
+    Args:
+        detach: True = 用 nohup 包一层后台运行，立刻返回 PID
     """
+    import time
     env = {}
     if gpu_ids:
         env["CUDA_VISIBLE_DEVICES"] = ",".join(str(g) for g in gpu_ids)
 
-    if env:
+    if detach:
+        ts = int(time.time())
+        logfile = f"/tmp/gpu-sched-{ts}.log"
+        env_prefix = ""
+        if gpu_ids:
+            env_prefix = f'CUDA_VISIBLE_DEVICES={",".join(str(g) for g in gpu_ids)} '
+        full_cmd = (
+            f"nohup sh -c '{env_prefix}{command}' > {logfile} 2>&1 & echo PID:$!; echo LOG:{logfile}"
+        )
+    elif env:
         env_str = " ".join(f'{k}="{v}"' for k, v in env.items())
         full_cmd = f"{env_str} {command}"
     else:
@@ -58,13 +69,14 @@ async def run_immediate(
     command: str,
     gpu_count: int = 1,
     gpu_memory_min: int = 0,
+    detach: bool = False,
 ) -> tuple[int, str, str, list[int]]:
     """立即执行：查询 GPU → 找空闲 → SSH 执行 → 返回结果。
 
     不走队列，连接用完即断。
 
-    Returns:
-        (exit_code, output, server_host, gpu_ids)
+    Args:
+        detach: True = 远程 nohup 后台运行，立刻返回
     """
     from gpu_scheduler.config import Config
     from gpu_scheduler.utils import console
@@ -98,7 +110,7 @@ async def run_immediate(
         )
 
         # 执行
-        exit_code, output = await run_remote(server_config, command, gpu_ids)
+        exit_code, output = await run_remote(server_config, command, gpu_ids, detach=detach)
 
         return exit_code, output, server_host, gpu_ids
 

@@ -1,0 +1,262 @@
+"""Build GPU Scheduler usage guide as talk-html page."""
+
+import os, datetime
+
+now = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S+08:00")
+
+html = r"""<!-- talk-html-meta {"slug":"gpu-scheduler-guide","template":"explainer","prompt_summary":"GPU Scheduler 使用指南 — 按需连接，用完即断。涵盖安装、配置、list/run/submit 命令，SSH 安全说明。","generated_at":"""+f'"{now}"'+r""","origin_prompt":"写 GPU Scheduler 使用指南","session":"deepseek-tui"} -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>GPU Scheduler 使用指南 — 按需连接，用完即断</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Noto+Serif+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#fcfaf8;--card:#fff;--text:#1c1c1c;--muted:#6e6e6e;--faint:#a0a0a0;
+    --border:#e8e5df;--accent:#2c6fce;--accent-dim:#d0dff5;--code-bg:#f4f2ee;
+    --radius:8px;--shadow:0 1px 3px rgba(0,0,0,.05);--warn-bg:#fef9e7;--warn-border:#f0c040;
+    --font-serif:"Noto Serif SC","Source Han Serif SC",serif;
+    --font-display:"Newsreader","Noto Serif SC",Georgia,serif;
+    --font-mono:"SF Mono","Cascadia Code","Consolas",monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:var(--font-serif);background:var(--bg);color:var(--text);line-height:1.8;font-size:17px}
+  .article{max-width:760px;margin:0 auto;padding:60px 24px 80px}
+  header{margin-bottom:48px;border-bottom:1px solid var(--border);padding-bottom:32px}
+  .kicker{font-family:var(--font-display);font-size:14px;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;margin-bottom:16px}
+  header h1{font-family:var(--font-display);font-size:40px;font-weight:600;line-height:1.2;letter-spacing:-.02em;margin-bottom:12px}
+  .subtitle{font-size:19px;color:var(--muted);line-height:1.6}
+  .meta{margin-top:20px;font-size:13px;color:var(--faint)}
+  section{margin-bottom:56px}
+  h2{font-family:var(--font-display);font-size:26px;font-weight:600;margin-bottom:16px}
+  h3{font-family:var(--font-display);font-size:20px;font-weight:600;margin:28px 0 10px}
+  p{margin-bottom:14px}
+  p.note{font-size:15px;color:var(--muted)}
+  code{font-family:var(--font-mono);font-size:.88em;background:var(--code-bg);padding:1px 5px;border-radius:3px;border:1px solid var(--border)}
+  pre{background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px;font-family:var(--font-mono);font-size:13px;line-height:1.6;overflow-x:auto;margin:16px 0}
+  pre .c{color:var(--muted)}
+  .warn{background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:var(--radius);padding:16px 20px;margin:20px 0;font-size:15px}
+  .warn strong{color:#92400e}
+  .cmd-ref{width:100%;border-collapse:collapse;font-size:14px;margin:20px 0}
+  .cmd-ref th{text-align:left;padding:8px 12px;border-bottom:2px solid var(--border);font-family:var(--font-display);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+  .cmd-ref td{padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+  .cmd-ref td:first-child{white-space:nowrap}
+  .step-num{display:inline-block;width:28px;height:28px;line-height:28px;text-align:center;background:var(--accent);color:#fff;border-radius:50%;font-size:14px;font-weight:600;margin-right:10px;flex-shrink:0}
+  .step-row{display:flex;align-items:flex-start;margin-bottom:16px;gap:12px}
+  .step-row p{margin:0;padding-top:2px}
+  footer{margin-top:60px;padding-top:24px;border-top:1px solid var(--border);font-size:13px;color:var(--faint)}
+  footer a{color:var(--muted)}
+  .audit-pill{position:fixed;bottom:20px;right:20px;font-family:var(--font-mono);font-size:10px;background:var(--card);border:1px solid var(--border);border-radius:20px;padding:6px 14px;box-shadow:var(--shadow);color:var(--faint);cursor:pointer}
+  @media(max-width:640px){.article{padding:32px 16px 60px}header h1{font-size:28px}pre{font-size:11px}}
+  @media(prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+</head>
+<body>
+<article class="article">
+
+<header>
+  <div class="kicker">GPU Scheduler · 使用指南</div>
+  <h1>按需连接，<br>用完即断</h1>
+  <p class="subtitle">
+    一个轻量级 GPU 小工具。只有在你主动执行命令时才连接服务器，不做后台轮询，不做持续监控。
+    日常就是 <code>list</code> 看一下，<code>run</code> 跑一下。
+  </p>
+  <p class="meta">"""+now+r""" · deepseek-tui · explainer</p>
+</header>
+
+<!-- ── 设计原则 ── -->
+<section>
+  <h2>设计原则</h2>
+  <p>GPU Scheduler 的核心假设是：<strong>你不会想让一个后台进程时刻连着你的 GPU 服务器。</strong></p>
+  <p>它不会：</p>
+  <ul style="margin-left:20px;margin-bottom:16px;">
+    <li>在后台起 daemon 持续轮询 GPU 状态</li>
+    <li>维持长连接心跳包</li>
+    <li>在你没主动操作的时候访问服务器</li>
+  </ul>
+  <p>它只会：</p>
+  <ul style="margin-left:20px;">
+    <li>你敲 <code>list</code> → 连上查一下 → 断开</li>
+    <li>你敲 <code>run</code> → 连上查 GPU → 找到空闲 → 执行命令 → 断开</li>
+  </ul>
+  <div class="warn">
+    <strong>SSH 安全</strong>：因为不会频繁建立新连接，不会被 fail2ban 误判为爆破。
+    每次命令只做一次 SSH 握手，执行完就断。和你手动 <code>ssh</code> 上去跑命令的行为完全一致。
+  </div>
+</section>
+
+<!-- ── 安装 ── -->
+<section>
+  <h2>安装</h2>
+  <pre><code><span class="c"># pipx 一键安装（推荐）</span>
+pipx install gpu-scheduler
+
+<span class="c"># 或从源码安装</span>
+git clone https://github.com/mathhyphen/gpu-scheduler.git
+cd gpu-scheduler &amp;&amp; pip install -e .</code></pre>
+</section>
+
+<!-- ── 配置 ── -->
+<section>
+  <h2>配置服务器</h2>
+
+  <div class="step-row"><span class="step-num">1</span><p>生成配置文件</p></div>
+  <pre><code>gpu-scheduler config init</code></pre>
+
+  <div class="step-row"><span class="step-num">2</span><p>编辑服务器列表</p></div>
+  <pre><code><span class="c"># ~/.config/gpu-scheduler/config.toml</span>
+[[servers]]
+host = "gpu-server-1"
+port = 22
+user = "your-username"
+key_file = "~/.ssh/id_rsa"
+
+[[servers]]
+host = "gpu-server-2"
+port = 22
+user = "your-username"
+key_file = "~/.ssh/id_rsa"
+
+[scheduler]
+poll_interval = 5.0</code></pre>
+
+  <div class="step-row"><span class="step-num">3</span><p>测试连接</p></div>
+  <pre><code>gpu-scheduler config test</code></pre>
+
+  <p class="note">配置文件按优先级搜索：<code>$GPU_SCHEDULER_CONFIG</code> → 当前目录 <code>.gpu-scheduler.toml</code> → <code>~/.config/gpu-scheduler/config.toml</code></p>
+</section>
+
+<!-- ── 日常命令 ── -->
+<section>
+  <h2>日常命令</h2>
+
+  <table class="cmd-ref">
+    <tr><th>命令</th><th>做什么</th><th>连服务器？</th></tr>
+    <tr>
+      <td><code>gpu-scheduler list</code></td>
+      <td>查看所有 GPU 状态（显存、利用率、温度、进程数）</td>
+      <td>连一下，查完即断</td>
+    </tr>
+    <tr>
+      <td><code>gpu-scheduler run &lt;cmd&gt;</code></td>
+      <td>找空闲 GPU → SSH 执行命令 → 返回结果</td>
+      <td>连一下，跑完即断</td>
+    </tr>
+    <tr>
+      <td><code>gpu-scheduler config test</code></td>
+      <td>测试所有服务器的 SSH 连通性和 GPU 可用性</td>
+      <td>连一下，测完即断</td>
+    </tr>
+    <tr>
+      <td><code>gpu-scheduler config show</code></td>
+      <td>显示当前配置</td>
+      <td>不连</td>
+    </tr>
+    <tr>
+      <td><code>gpu-scheduler queue</code></td>
+      <td>查看任务队列（仅 daemon 模式）</td>
+      <td>不连</td>
+    </tr>
+  </table>
+</section>
+
+<!-- ── list 详解 ── -->
+<section>
+  <h2>list — 查看 GPU 状态</h2>
+  <pre><code><span class="c"># 一次性查询</span>
+gpu-scheduler list
+
+<span class="c"># 实时刷新（每 3 秒查一次，Ctrl+C 停止）</span>
+gpu-scheduler list --watch
+
+<span class="c"># 指定配置文件和刷新间隔</span>
+gpu-scheduler list -c .gpu-scheduler.toml -i 5 --watch</code></pre>
+  <p>输出彩色表格：绿色=空闲，黄色=使用中，红色=满载。右侧显示每张卡的进程数。</p>
+</section>
+
+<!-- ── run 详解 ── -->
+<section>
+  <h2>run — 立即执行任务</h2>
+  <pre><code><span class="c"># 1 张 GPU，默认显存要求</span>
+gpu-scheduler run python train.py
+
+<span class="c"># 2 张 GPU</span>
+gpu-scheduler run python train.py --gpus 2
+
+<span class="c"># 要求每张 GPU 至少 24GB 空闲显存</span>
+gpu-scheduler run python large_model.py --gpu-memory 24000
+
+<span class="c"># 指定配置文件</span>
+gpu-scheduler run -c .gpu-scheduler.toml python infer.py --gpus 1</code></pre>
+
+  <div class="warn">
+    <strong>关于后台执行</strong>：<code>run</code> 会阻塞等待命令完成。
+    如果你的终端关了或 Ctrl+C，SSH 断开，远程进程会随之中止。
+    训练几小时的模型，请保持终端开着，或用 <code>nohup</code>：<br>
+    <code>gpu-scheduler run "nohup python train.py &gt; train.log 2&gt;&amp;1 &amp;"</code><br>
+    这样即使断开，远程进程也会继续跑。
+  </div>
+</section>
+
+<!-- ── 调度逻辑 ── -->
+<section>
+  <h2>调度逻辑</h2>
+  <p>每次 <code>run</code> 的执行流程：</p>
+  <div class="step-row"><span class="step-num">1</span><p>并行 SSH 到所有配置的服务器，执行 nvidia-smi 查询</p></div>
+  <div class="step-row"><span class="step-num">2</span><p>解析 GPU 信息（显存、利用率、进程），通过 UUID 精确映射进程到 GPU</p></div>
+  <div class="step-row"><span class="step-num">3</span><p>筛选空闲 GPU（显存占用 &lt; 500MB 且无进程）</p></div>
+  <div class="step-row"><span class="step-num">4</span><p>在同一台服务器上找满足数量和显存要求的空闲卡，选显存最大的那些</p></div>
+  <div class="step-row"><span class="step-num">5</span><p>SSH 到该服务器，设置 <code>CUDA_VISIBLE_DEVICES</code>，执行用户命令</p></div>
+  <div class="step-row"><span class="step-num">6</span><p>命令完成，返回 exit code 和输出，断开连接</p></div>
+</section>
+
+<!-- ── 队列模式 ── -->
+<section>
+  <h2>队列模式（可选）</h2>
+  <p>如果你需要批量提交多个任务、按优先级排队执行：</p>
+  <pre><code><span class="c"># 终端 1：启动 daemon（会持续轮询，不推荐日常使用）</span>
+gpu-scheduler daemon
+
+<span class="c"># 终端 2：提交任务</span>
+gpu-scheduler submit python train1.py --priority 0
+gpu-scheduler submit python train2.py --priority 10
+gpu-scheduler submit python infer.py --gpu-memory 32000
+
+<span class="c"># 查看队列</span>
+gpu-scheduler queue
+
+<span class="c"># 取消任务</span>
+gpu-scheduler cancel 3</code></pre>
+  <p class="note">daemon 模式下连接池会维持长连接。安全但不如 <code>run</code> 简洁。日常使用推荐 <code>run</code>。</p>
+</section>
+
+<!-- ── 技术栈 ── -->
+<section>
+  <h2>技术栈</h2>
+  <table class="cmd-ref">
+    <tr><th>组件</th><th>选型</th><th>理由</th></tr>
+    <tr><td>CLI</td><td>Typer</td><td>类型提示驱动，代码最少</td></tr>
+    <tr><td>终端渲染</td><td>Rich</td><td>彩色表格、Live 刷新</td></tr>
+    <tr><td>SSH</td><td>AsyncSSH</td><td>asyncio 原生，并行查询</td></tr>
+    <tr><td>队列</td><td>SQLite</td><td>零依赖持久化</td></tr>
+    <tr><td>配置</td><td>TOML</td><td>Python 3.11+ 内置</td></tr>
+    <tr><td>打包</td><td>Hatchling + pipx</td><td>一行安装</td></tr>
+  </table>
+</section>
+
+<footer>
+  <p>本页由 talk-html 生成 · deepseek-tui · """+now[:10]+r""" · explainer</p>
+  <p>源码：<a href="https://github.com/mathhyphen/gpu-scheduler">github.com/mathhyphen/gpu-scheduler</a></p>
+</footer>
+</article>
+<div class="audit-pill" onclick="navigator.clipboard.writeText('deepseek-tui/gpu-scheduler-guide');this.textContent='copied';setTimeout(()=>this.textContent='deepseek-tui/gpu-scheduler-guide',1200)">deepseek-tui/gpu-scheduler-guide</div>
+</body>
+</html>"""
+
+with open("gpu-scheduler-guide.html", "w", encoding="utf-8") as f:
+    f.write(html)
+print(f"Written gpu-scheduler-guide.html ({os.path.getsize('gpu-scheduler-guide.html')//1024} KB)")
